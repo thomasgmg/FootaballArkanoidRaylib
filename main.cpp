@@ -71,12 +71,14 @@ int particleCount = 0;
 int score = 0;
 int goals = 0;
 bool Pause = false;
-
-bool SubtractScore;
+bool SubtractScore = false;
+bool ShowMinus50 = false;
+float Minus50Timer = 0.0f;
+bool GameOver = false;
 
 // Declaration
 void DrawGame(void);
-void DrawFootballField();
+void DrawFootballField(void);
 void DrawFootballBall(Vector2 position, float radius);
 void DrawGoalkeeper(Vector2 position, float width, float height);
 void DrawGoal(Vector2 position, float width, float height);
@@ -87,6 +89,8 @@ void BallGoalCollision(void);
 void CreateGoalEffect(Vector2 goalPos);
 void CreateSparkEffect(Vector2 ballPos);
 void UpdateDrawParticles(float deltaTime);
+void UpdateBall(float deltaTime);
+void RestartGame(void);
 
 int main(void)
 {
@@ -106,7 +110,16 @@ int main(void)
             Pause = !Pause;
         }
 
+        if (score < 0)
+        {
+            GameOver = true;
+        }
+
         UpdateGame(deltaTime);
+        if (GameOver)
+        {
+            RestartGame();
+        }
         BallWallCollision();
         BallGoalkeeperCollision();
         BallGoalCollision();
@@ -120,7 +133,7 @@ int main(void)
 
 void UpdateGame(float deltaTime)
 {
-    if (Pause)
+    if (Pause || GameOver)
     {
         return;
     }
@@ -128,8 +141,16 @@ void UpdateGame(float deltaTime)
     if (SubtractScore)
     {
         score -= 50;
-        DrawText("-50", GetScreenWidth() / 2.0f - MeasureText("-50", 25) / 2.0f, GetScreenHeight() / 2.0f, 25, BLACK);
         SubtractScore = false;
+    }
+
+    if (ShowMinus50)
+    {
+        Minus50Timer -= deltaTime;
+        if (Minus50Timer <= 0.0f)
+        {
+            ShowMinus50 = false;
+        }
     }
 
     // Update Goalkeeper
@@ -143,62 +164,35 @@ void UpdateGame(float deltaTime)
         keeper.Position.y += keeper.Speed * deltaTime;
     }
 
-    // Update ball
-    if (ball.State == Ball::NORMAL)
+    UpdateBall(deltaTime);
+}
+
+void RestartGame(void)
+{
+    Rectangle RestartButton = {GetScreenWidth() / 2.0f - 100, GetScreenHeight() / 2.0f + 50, 200, 50};
+
+    Vector2 MousePoint = GetMousePosition();
+    if (CheckCollisionPointRec(MousePoint, RestartButton) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
     {
-        ball.Position.x += ball.Direction.x * ball.Speed * deltaTime;
-        ball.Position.y += ball.Direction.y * ball.Speed * deltaTime;
-        ball.spinAngle = 0.0f;
-    }
-    else if (ball.State == Ball::ROLLING)
-    {
-        ball.RollTimer -= deltaTime;
-        float reducedSpeed = ball.Speed * 0.2f;
-        float newY = ball.Position.y + ball.rollDirection * reducedSpeed * deltaTime;
-
-        float goalTop = goal.Position.y - goal.Height / 2 + ball.Radius;
-        float goalBottom = goal.Position.y + goal.Height / 2 - ball.Radius;
-        if (newY < goalTop)
-        {
-            newY = goalTop;
-            ball.rollDirection = 1.0f; // Reverse direction to move down
-        }
-        else if (newY > goalBottom)
-        {
-            newY = goalBottom;
-            ball.rollDirection = -1.0f; // Reverse direction to move up
-        }
-        ball.Position.y = newY;
-
-        // Keep ball at goal's x-position
-        ball.Position.x = goal.Position.x - ball.Radius;
-
-        ball.spinAngle += ball.spinSpeed * deltaTime;
-
-        if (ball.spinAngle >= 360.0f)
-        {
-            ball.spinAngle -= 360.0f;
-        }
-
-        if (ball.RollTimer <= 0.0f)
-        {
-            // Transition to SPARKING state
-            ball.Position = (Vector2){0.5f, 0.5f};
-            ball.State = Ball::SPARKING;
-            ball.sparkTimer = 1.0f; // 1-second sparking effect
-            CreateSparkEffect(ball.Position);
-        }
-    }
-    else if (ball.State == Ball::SPARKING)
-    {
-        ball.sparkTimer -= deltaTime;
-        if (ball.sparkTimer <= 0.0f)
-        {
-            // Transition back to NORMAL state
-            ball.State = Ball::NORMAL;
-            ball.Direction = (Vector2){-1.0f, (float)GetRandomValue(-100, 100) / 100.0f};
-            ball.Direction = Vector2Normalize(ball.Direction);
-        }
+        // Reset game
+        score = 0;
+        goals = 0;
+        ball = {.Position = {0.5f, 0.5f},
+                .Radius = 0.008f,
+                .Speed = 0.42f,
+                .Direction = {1.0f, -1.0f},
+                .BallColor = WHITE,
+                .State = Ball::NORMAL,
+                .RollTimer = 0.0f,
+                .rollDirection = 0.0f,
+                .spinAngle = 0.0f,
+                .spinSpeed = 360.0f,
+                .sparkTimer = 0.0f};
+        ball.Direction = Vector2Normalize(ball.Direction);
+        keeper = {
+            .Position = {0.96f, 0.5f}, .Width = 0.016f, .Height = 0.056f, .Speed = 0.485f, .KeeperColor = DARKBLUE};
+        particleCount = 0;
+        GameOver = false;
     }
 }
 
@@ -266,9 +260,70 @@ void UpdateDrawParticles(float deltaTime)
     }
 }
 
+void UpdateBall(float deltaTime)
+{
+    // Update ball
+    if (ball.State == Ball::NORMAL)
+    {
+        ball.Position.x += ball.Direction.x * ball.Speed * deltaTime;
+        ball.Position.y += ball.Direction.y * ball.Speed * deltaTime;
+        ball.spinAngle = 0.0f;
+    }
+    else if (ball.State == Ball::ROLLING)
+    {
+        ball.RollTimer -= deltaTime;
+        float reducedSpeed = ball.Speed * 0.2f;
+        float newY = ball.Position.y + ball.rollDirection * reducedSpeed * deltaTime;
+
+        float goalTop = goal.Position.y - goal.Height / 2 + ball.Radius;
+        float goalBottom = goal.Position.y + goal.Height / 2 - ball.Radius;
+        if (newY < goalTop)
+        {
+            newY = goalTop;
+            ball.rollDirection = 1.0f; // Reverse direction to move down
+        }
+        else if (newY > goalBottom)
+        {
+            newY = goalBottom;
+            ball.rollDirection = -1.0f; // Reverse direction to move up
+        }
+        ball.Position.y = newY;
+
+        // Keep ball at goal's x-position
+        ball.Position.x = goal.Position.x - ball.Radius;
+
+        ball.spinAngle += ball.spinSpeed * deltaTime;
+
+        if (ball.spinAngle >= 360.0f)
+        {
+            ball.spinAngle -= 360.0f;
+        }
+
+        if (ball.RollTimer <= 0.0f)
+        {
+            // Transition to SPARKING state
+            ball.Position = (Vector2){0.5f, 0.5f};
+            ball.State = Ball::SPARKING;
+            ball.sparkTimer = 1.0f; // 1-second sparking effect
+            CreateSparkEffect(ball.Position);
+        }
+    }
+    else if (ball.State == Ball::SPARKING)
+    {
+        ball.sparkTimer -= deltaTime;
+        if (ball.sparkTimer <= 0.0f)
+        {
+            // Transition back to NORMAL state
+            ball.State = Ball::NORMAL;
+            ball.Direction = (Vector2){-1.0f, (float)GetRandomValue(-100, 100) / 100.0f};
+            ball.Direction = Vector2Normalize(ball.Direction);
+        }
+    }
+}
+
 void BallWallCollision(void)
 {
-    // Ball wall collision
+    // Ball-wall collision
     Vector2 ballPixelPos = {ball.Position.x * GetScreenWidth(), ball.Position.y * GetScreenHeight()};
     float ballRadiusPixels = ball.Radius * GetScreenWidth();
     if (ballPixelPos.y + ballRadiusPixels >= GetScreenHeight() || ballPixelPos.y - ballRadiusPixels <= 0)
@@ -286,6 +341,8 @@ void BallWallCollision(void)
 
     if (ballPixelPos.x + ballRadiusPixels >= GetScreenWidth() && ball.State == Ball::NORMAL)
     {
+        ShowMinus50 = true;
+        Minus50Timer = 1.0f;
         SubtractScore = true;
         ball.Position = (Vector2){0.5f, 0.5f};
         ball.State = Ball::SPARKING;
@@ -332,7 +389,7 @@ void BallGoalCollision(void)
     }
 }
 
-void DrawFootballField()
+void DrawFootballField(void)
 {
     // Green pitch
     DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), (Color){0, 100, 0, 255});
@@ -421,6 +478,23 @@ void DrawGame(void)
     if (ball.State == Ball::ROLLING)
     {
         DrawText("Goal", (float)GetScreenWidth() / 2 + 250, (float)GetScreenHeight() / 2, 30, BLACK);
+    }
+
+    if (ShowMinus50)
+    {
+        DrawText("-50", GetScreenWidth() / 2.0f + 250, GetScreenHeight() / 2.0f, 25, BLACK);
+    }
+
+    if (GameOver)
+    {
+        DrawText("Game Over", GetScreenWidth() / 2.0f - MeasureText("Game Over", 35) / 2.0f,
+                 GetScreenHeight() / 2.0f - 50, 35, MAROON);
+
+        // Draw Restart button
+        Rectangle RestartButton = {GetScreenWidth() / 2.0f - 100, GetScreenHeight() / 2.0f + 50, 200, 50};
+        DrawRectangleRounded(RestartButton, 0.3f, 10, DARKBLUE);
+        DrawText("Restart", RestartButton.x + (RestartButton.width - MeasureText("Restart 🔄", 20)) / 2,
+                 RestartButton.y + (RestartButton.height - 20) / 2, 20, BLACK);
     }
 
     EndDrawing();
