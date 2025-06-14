@@ -12,12 +12,14 @@ struct Ball
     enum
     {
         NORMAL,
-        ROLLING
+        ROLLING,
+        SPARKING
     } State;
     float RollTimer;
     float rollDirection;
     float spinAngle;
     float spinSpeed;
+    float sparkTimer;
 };
 struct Ball ball = {.Position = {0.5f, 0.5f},
                     .Radius = 0.008f,
@@ -28,7 +30,8 @@ struct Ball ball = {.Position = {0.5f, 0.5f},
                     .RollTimer = 0.0f,
                     .rollDirection = 0.0f,
                     .spinAngle = 0.0f,
-                    .spinSpeed = 360.0f};
+                    .spinSpeed = 360.0f,
+                    .sparkTimer = 0.0f};
 
 struct Goalkeeper
 {
@@ -69,6 +72,8 @@ int score = 0;
 int goals = 0;
 bool Pause = false;
 
+bool SubtractScore;
+
 // Declaration
 void DrawGame(void);
 void DrawFootballField();
@@ -80,6 +85,7 @@ void BallWallCollision(void);
 void BallGoalkeeperCollision(void);
 void BallGoalCollision(void);
 void CreateGoalEffect(Vector2 goalPos);
+void CreateSparkEffect(Vector2 ballPos);
 void UpdateDrawParticles(float deltaTime);
 
 int main(void)
@@ -119,6 +125,13 @@ void UpdateGame(float deltaTime)
         return;
     }
 
+    if (SubtractScore)
+    {
+        score -= 50;
+        DrawText("-50", GetScreenWidth() / 2.0f - MeasureText("-50", 25) / 2.0f, GetScreenHeight() / 2.0f, 25, BLACK);
+        SubtractScore = false;
+    }
+
     // Update Goalkeeper
     Vector2 keeperPixelPos = {keeper.Position.x * GetScreenWidth(), keeper.Position.y * GetScreenHeight()};
     if (IsKeyDown(KEY_UP) && keeperPixelPos.y - keeper.Height * GetScreenHeight() / 2 > 0)
@@ -137,7 +150,6 @@ void UpdateGame(float deltaTime)
         ball.Position.y += ball.Direction.y * ball.Speed * deltaTime;
         ball.spinAngle = 0.0f;
     }
-
     else if (ball.State == Ball::ROLLING)
     {
         ball.RollTimer -= deltaTime;
@@ -170,11 +182,22 @@ void UpdateGame(float deltaTime)
 
         if (ball.RollTimer <= 0.0f)
         {
-            // Reset ball to starting position
+            // Transition to SPARKING state
             ball.Position = (Vector2){0.5f, 0.5f};
+            ball.State = Ball::SPARKING;
+            ball.sparkTimer = 1.0f; // 1-second sparking effect
+            CreateSparkEffect(ball.Position);
+        }
+    }
+    else if (ball.State == Ball::SPARKING)
+    {
+        ball.sparkTimer -= deltaTime;
+        if (ball.sparkTimer <= 0.0f)
+        {
+            // Transition back to NORMAL state
+            ball.State = Ball::NORMAL;
             ball.Direction = (Vector2){-1.0f, (float)GetRandomValue(-100, 100) / 100.0f};
             ball.Direction = Vector2Normalize(ball.Direction);
-            ball.State = Ball::NORMAL;
         }
     }
 }
@@ -199,6 +222,26 @@ void CreateGoalEffect(Vector2 goalPos)
     }
 }
 
+void CreateSparkEffect(Vector2 ballPos)
+{
+    int sparkCount = 15;
+    for (int i = 0; i < sparkCount && particleCount < MAX_PARTICLES; i++)
+    {
+        Particle &particle = particles[particleCount];
+        particle.position = {ballPos.x * GetScreenWidth(), ballPos.y * GetScreenHeight()};
+
+        float angle = GetRandomValue(0, 360) * DEG2RAD;
+        float speed = (float)GetRandomValue(50, 150) / 100.0f;
+
+        particle.velocity = {cosf(angle) * speed, sinf(angle) * speed};
+        particle.color = (Color){200, 220, 255, 255};
+        particle.alpha = 1.0f;
+        particle.size = (float)GetRandomValue(4, 10);
+        particle.life = 0.1f + GetRandomValue(0, 50) / 100.0f;
+        particleCount++;
+    }
+}
+
 void UpdateDrawParticles(float deltaTime)
 {
     for (int i = particleCount - 1; i >= 0; i--)
@@ -207,7 +250,8 @@ void UpdateDrawParticles(float deltaTime)
         p.position.x += p.velocity.x * deltaTime * 120;
         p.position.y += p.velocity.y * deltaTime * 120;
         p.life -= deltaTime;
-        p.alpha = p.life / 1.5f;
+        p.alpha =
+            p.life / (p.color.r == 0 && p.color.g == 150 && p.color.b == 255 ? 0.5f : 1.5f); // Adjust fade for sparks
 
         Color particleColor = p.color;
         particleColor.a = (unsigned char)(p.alpha * 255);
@@ -240,11 +284,13 @@ void BallWallCollision(void)
         ball.Position.x = ballRadiusPixels / GetScreenWidth();
     }
 
-    if (ballPixelPos.x + ballRadiusPixels >= GetScreenWidth())
+    if (ballPixelPos.x + ballRadiusPixels >= GetScreenWidth() && ball.State == Ball::NORMAL)
     {
+        SubtractScore = true;
         ball.Position = (Vector2){0.5f, 0.5f};
-        ball.Direction = (Vector2){-1.0f, (float)GetRandomValue(-100, 100) / 100.0f};
-        ball.Direction = Vector2Normalize(ball.Direction);
+        ball.State = Ball::SPARKING;
+        ball.sparkTimer = 1.0f; // 1-second sparking effect
+        CreateSparkEffect(ball.Position);
     }
 }
 
@@ -374,7 +420,7 @@ void DrawGame(void)
 
     if (ball.State == Ball::ROLLING)
     {
-            DrawText("Goal", (float)GetScreenWidth() / 2 + 250, (float)GetScreenHeight() / 2, 30, BLACK);
+        DrawText("Goal", (float)GetScreenWidth() / 2 + 250, (float)GetScreenHeight() / 2, 30, BLACK);
     }
 
     EndDrawing();
