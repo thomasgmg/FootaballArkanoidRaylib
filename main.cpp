@@ -2,6 +2,14 @@
 #include "raymath.h"
 #include <cstdio>
 
+enum GameState
+{
+    HOME,
+    PLAYING,
+    GAME_OVER
+};
+GameState gameState = HOME;
+
 struct Ball
 {
     Vector2 Position;
@@ -68,18 +76,19 @@ int const MAX_PARTICLES = 100;
 Particle particles[MAX_PARTICLES];
 int particleCount = 0;
 
+Font font;
+
 int score = 0;
 int goals = 0;
 bool Pause = false;
 bool SubtractScore = false;
 bool ShowMinus50 = false;
 float Minus50Timer = 0.0f;
-bool GameOver = false;
 
 // Declaration
-void DrawGame(void);
+void DrawGame(float deltaTime);
 void DrawFootballField(void);
-void DrawFootballBall(Vector2 position, float radius);
+void DrawBall(Vector2 position, float radius);
 void DrawGoalkeeper(Vector2 position, float width, float height);
 void DrawGoal(Vector2 position, float width, float height);
 void UpdateGame(float deltaTime);
@@ -98,6 +107,8 @@ int main(void)
     InitWindow(1250, 650, "Classic Game: Football Arkanoid");
     SetTargetFPS(60);
 
+    font = LoadFontEx("resources/font.ttf", 96, 0, 0);
+
     // Normalize ball direction
     ball.Direction = Vector2Normalize(ball.Direction);
 
@@ -105,26 +116,45 @@ int main(void)
     {
         float deltaTime = GetFrameTime();
 
-        if (IsKeyPressed(KEY_SPACE))
+        switch (gameState)
         {
-            Pause = !Pause;
+        case HOME: {
+            if (IsKeyPressed(KEY_ENTER))
+            {
+                Vector2 directionToKeeper = {keeper.Position.x - ball.Position.x, keeper.Position.y - ball.Position.y};
+                ball.Direction = Vector2Normalize(directionToKeeper);
+
+                gameState = PLAYING;
+            }
+            break;
         }
 
-        if (score < 0)
-        {
-            GameOver = true;
+        case PLAYING: {
+            if (IsKeyPressed(KEY_SPACE))
+            {
+                Pause = !Pause;
+            }
+
+            if (score < 0)
+            {
+                gameState = GAME_OVER;
+            }
+
+            BallWallCollision();
+            BallGoalkeeperCollision();
+            BallGoalCollision();
+
+            break;
+        }
+
+        case GAME_OVER: {
+            RestartGame();
+            break;
+        }
         }
 
         UpdateGame(deltaTime);
-        if (GameOver)
-        {
-            RestartGame();
-        }
-        BallWallCollision();
-        BallGoalkeeperCollision();
-        BallGoalCollision();
-
-        DrawGame();
+        DrawGame(deltaTime);
     }
 
     CloseWindow();
@@ -133,7 +163,7 @@ int main(void)
 
 void UpdateGame(float deltaTime)
 {
-    if (Pause || GameOver)
+    if (Pause || gameState == GAME_OVER)
     {
         return;
     }
@@ -188,11 +218,14 @@ void RestartGame(void)
                 .spinAngle = 0.0f,
                 .spinSpeed = 360.0f,
                 .sparkTimer = 0.0f};
-        ball.Direction = Vector2Normalize(ball.Direction);
+
+        Vector2 directionToKeeper = {keeper.Position.x - ball.Position.x, keeper.Position.y - ball.Position.y};
+        ball.Direction = Vector2Normalize(directionToKeeper);
         keeper = {
             .Position = {0.96f, 0.5f}, .Width = 0.016f, .Height = 0.056f, .Speed = 0.485f, .KeeperColor = DARKBLUE};
         particleCount = 0;
-        GameOver = false;
+
+        gameState = PLAYING;
     }
 }
 
@@ -412,7 +445,7 @@ void DrawFootballField(void)
                        WHITE);
 }
 
-void DrawFootballBall(Vector2 position, float radius)
+void DrawBall(Vector2 position, float radius)
 {
     Vector2 pixelPos = {position.x * GetScreenWidth(), position.y * GetScreenHeight()};
     DrawCircleV(pixelPos, radius * GetScreenWidth(), ball.BallColor);
@@ -455,46 +488,106 @@ void DrawGoal(Vector2 position, float width, float height)
     }
 }
 
-void DrawGame(void)
+void DrawGame(float deltaTime)
 {
     BeginDrawing();
-    ClearBackground(BLACK);
 
-    DrawFootballField();
-    DrawGoal(goal.Position, goal.Width, goal.Height);
-    DrawGoalkeeper(keeper.Position, keeper.Width, keeper.Height);
-    DrawFootballBall(ball.Position, ball.Radius);
-    UpdateDrawParticles(GetFrameTime());
-
-    DrawText(TextFormat("Score: %i", score), GetScreenWidth() * 0.008f, GetScreenHeight() * 0.015f, 20, WHITE);
-    DrawText(TextFormat("Goals: %i", goals), GetScreenWidth() * 0.008f, GetScreenHeight() * 0.062f, 20, WHITE);
-
-    if (Pause)
+    switch (gameState)
     {
-        DrawText("Game paused", GetScreenWidth() / 2.0f - MeasureText("Game paused", 25) / 2.0f,
-                 GetScreenHeight() / 2.0f, 25, BLACK);
+    case HOME: {
+        ClearBackground(BLACK);
+
+        const char *WelcomeText = "Welcome to the Football Arkanoid";
+
+        Vector2 textPos = {GetScreenWidth() / 2.0f - MeasureTextEx(font, WelcomeText, 40, 1).x / 2,
+                           GetScreenHeight() / 2.0f - 70};
+
+        float glowScale = 1.0f + 0.1f * sinf(deltaTime * 2.0f);
+        int glowLayers = 3;
+        for (int i = glowLayers; i >= 1; i--)
+        {
+            float glowSize = 40 + i * 5 * glowScale;
+            float glowAlpha = 0.3f - (i * 0.1f);
+            Color glowColor = {255, 255, 0, (unsigned char)(glowAlpha * 255)};
+            Vector2 glowPos = {GetScreenWidth() / 2.0f - MeasureTextEx(font, WelcomeText, glowSize, 1).x / 2,
+                               GetScreenHeight() / 2.0f - 70 - i * 2};
+            DrawTextEx(font, WelcomeText, glowPos, glowSize, 1, glowColor);
+        }
+
+        DrawTextEx(font, WelcomeText, textPos, 40, 1, WHITE);
+
+        DrawTextEx(font, "By:", {GetScreenWidth() / 2.0f - 570, GetScreenHeight() / 2.0f - 280}, 25, 1, WHITE);
+        DrawTextEx(font, "Thomas Gilb de Moura Guedes", {GetScreenWidth() / 2.0f - 570, GetScreenHeight() / 2.0f - 250},
+                   25, 1, WHITE);
+        break;
     }
 
-    if (ball.State == Ball::ROLLING)
-    {
-        DrawText("Goal", (float)GetScreenWidth() / 2 + 250, (float)GetScreenHeight() / 2, 30, BLACK);
+    case PLAYING: {
+        ClearBackground(BLACK);
+
+        DrawFootballField();
+        DrawGoal(goal.Position, goal.Width, goal.Height);
+        DrawGoalkeeper(keeper.Position, keeper.Width, keeper.Height);
+        DrawBall(ball.Position, ball.Radius);
+        UpdateDrawParticles(GetFrameTime());
+
+        DrawText(TextFormat("Score: %i", score), GetScreenWidth() * 0.008f, GetScreenHeight() * 0.015f, 20, WHITE);
+        DrawText(TextFormat("Goals: %i", goals), GetScreenWidth() * 0.008f, GetScreenHeight() * 0.062f, 20, WHITE);
+
+        if (Pause)
+        {
+            DrawText("Game paused", GetScreenWidth() / 2.0f - MeasureText("Game paused", 25) / 2.0f,
+                     GetScreenHeight() / 2.0f, 25, BLACK);
+        }
+
+        if (ball.State == Ball::ROLLING)
+        {
+            DrawText("Goal", (float)GetScreenWidth() / 2 + 250, (float)GetScreenHeight() / 2, 30, BLACK);
+        }
+
+        if (ShowMinus50)
+        {
+            DrawText("-50", GetScreenWidth() / 2.0f + 250, GetScreenHeight() / 2.0f, 25, BLACK);
+        }
+
+        break;
     }
 
-    if (ShowMinus50)
-    {
-        DrawText("-50", GetScreenWidth() / 2.0f + 250, GetScreenHeight() / 2.0f, 25, BLACK);
-    }
+    case GAME_OVER: {
+        ClearBackground(BLACK);
 
-    if (GameOver)
-    {
+        DrawFootballField();
+        DrawGoal(goal.Position, goal.Width, goal.Height);
+        DrawGoalkeeper(keeper.Position, keeper.Width, keeper.Height);
+        DrawBall(ball.Position, ball.Radius);
+        UpdateDrawParticles(GetFrameTime());
+
+        DrawText(TextFormat("Score: %i", score), GetScreenWidth() * 0.008f, GetScreenHeight() * 0.015f, 20, WHITE);
+        DrawText(TextFormat("Goals: %i", goals), GetScreenWidth() * 0.008f, GetScreenHeight() * 0.062f, 20, WHITE);
         DrawText("Game Over", GetScreenWidth() / 2.0f - MeasureText("Game Over", 35) / 2.0f,
                  GetScreenHeight() / 2.0f - 50, 35, MAROON);
 
         // Draw Restart button
         Rectangle RestartButton = {GetScreenWidth() / 2.0f - 100, GetScreenHeight() / 2.0f + 50, 200, 50};
         DrawRectangleRounded(RestartButton, 0.3f, 10, DARKBLUE);
-        DrawText("Restart", RestartButton.x + (RestartButton.width - MeasureText("Restart 🔄", 20)) / 2,
+        DrawText("Restart", RestartButton.x + (RestartButton.width - MeasureText("Restart", 20)) / 2,
                  RestartButton.y + (RestartButton.height - 20) / 2, 20, BLACK);
+
+        float arrowSize = 12.0f;
+        float arrowWidth = arrowSize * 1.5f;
+
+        Vector2 arrowPos = {RestartButton.x + (RestartButton.width - MeasureText("Restart", 20)) / 2 + 4.0f + 75,
+                            RestartButton.y + (RestartButton.height) / 2};
+        DrawLine(arrowPos.x, arrowPos.y - arrowSize / 2, arrowPos.x + arrowWidth, arrowPos.y, BLACK);
+        DrawLine(arrowPos.x, arrowPos.y + arrowSize / 2, arrowPos.x + arrowWidth, arrowPos.y, BLACK);
+        DrawLine(arrowPos.x, arrowPos.y - arrowSize / 2, arrowPos.x + arrowWidth / 2, arrowPos.y, BLACK);
+        DrawLine(arrowPos.x, arrowPos.y + arrowSize / 2, arrowPos.x + arrowWidth / 2, arrowPos.y, BLACK);
+
+        // TODO: Maybe add an incomplete arc to draw a restart symbol?
+        // float ArcRadius = arrowSize * 0.95f;
+
+        break;
+    }
     }
 
     EndDrawing();
