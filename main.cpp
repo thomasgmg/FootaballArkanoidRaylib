@@ -124,7 +124,7 @@ int main(void)
                 Vector2 directionToKeeper = {keeper.Position.x - ball.Position.x, keeper.Position.y - ball.Position.y};
                 ball.Direction = Vector2Normalize(directionToKeeper);
 
-                gameState = PLAYING;
+                gameState = GAME_OVER;
             }
             break;
         }
@@ -576,15 +576,16 @@ void DrawGame(float deltaTime)
         float arrowSize = 12.0f;
         float arrowWidth = arrowSize * 1.5f;
 
-        Vector2 arrowPos = {RestartButton.x + (RestartButton.width - MeasureText("Restart", 20)) / 2 + 4.0f + 75,
-                            RestartButton.y + (RestartButton.height) / 2};
-        DrawLine(arrowPos.x, arrowPos.y - arrowSize / 2, arrowPos.x + arrowWidth, arrowPos.y, BLACK);
-        DrawLine(arrowPos.x, arrowPos.y + arrowSize / 2, arrowPos.x + arrowWidth, arrowPos.y, BLACK);
-        DrawLine(arrowPos.x, arrowPos.y - arrowSize / 2, arrowPos.x + arrowWidth / 2, arrowPos.y, BLACK);
-        DrawLine(arrowPos.x, arrowPos.y + arrowSize / 2, arrowPos.x + arrowWidth / 2, arrowPos.y, BLACK);
+        Vector2 arrowPos = {RestartButton.x + (RestartButton.width - MeasureText("Restart", 20)) / 2 + 4.0f + 100,
+                            RestartButton.y + (RestartButton.height) / 2 - 7};
+        DrawLine(arrowPos.x, arrowPos.y - arrowSize / 2, arrowPos.x - arrowWidth, arrowPos.y, BLACK);
+        DrawLine(arrowPos.x, arrowPos.y + arrowSize / 2, arrowPos.x - arrowWidth, arrowPos.y, BLACK);
+        DrawLine(arrowPos.x, arrowPos.y - arrowSize / 2, arrowPos.x - arrowWidth / 2, arrowPos.y, BLACK);
+        DrawLine(arrowPos.x, arrowPos.y + arrowSize / 2, arrowPos.x - arrowWidth / 2, arrowPos.y, BLACK);
 
         // TODO: Maybe add an incomplete arc to draw a restart symbol?
-        // float ArcRadius = arrowSize * 0.95f;
+        DrawRingLines((Vector2){(float)GetScreenWidth() / 2 + 60, (float)GetScreenHeight() / 2 + 75}, 7.0f, 10.0f, -200.0f,
+                      -450.0f, 15, BLACK);
 
         break;
     }
